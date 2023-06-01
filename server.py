@@ -4,6 +4,7 @@ import socket
 import time
 import sys
 import threading
+import copy
 
 # Multi Paxos Definitions:
 
@@ -34,6 +35,12 @@ def comment(username, title, content):
   block = blockchain.comment(block, username,title,content)
   print("Comment Successful")
 
+def exit():
+    sys.stdout.flush()
+    for _, conn in other_processes.items():
+        conn.close()
+    os._exit(0)
+
 def handle_input():
   while True:
     try:
@@ -54,10 +61,13 @@ def handle_input():
             for _, conn in other_processes.items():                #iterating through all other process
                 send_message(conn, transaction[1])
         elif(transaction[0] == "exit"):
-            sys.stdout.flush()
+            exit()
+        elif(transaction[0] == "exit all"):
             for _, conn in other_processes.items():
-                conn.close()
-            os._exit(0)
+                send_message(conn, "exit")
+            exit()
+        elif(transaction[0] == "leader"):
+            print(curLeader)
         else:
             print("Invalid command")
     except:
@@ -102,7 +112,7 @@ def phase23(curBallotNum, value):
                 proposed_value = accept_value
         accepts = 0
         for _,sock in other_processes.items():
-            send_message(sock, f"accept|{ballotNum}|{proposed_value}")
+            send_message(sock, f"accept|{curBallotNum}|{proposed_value}")
     
     while accepts < 3 and curBallotNum == ballotNum:
         print("waiting for accepts")
@@ -114,17 +124,17 @@ def phase23(curBallotNum, value):
 
 
 def propose(value):
-    global curBallotNum
+    global ballotNum
     if curLeader is None:                                   #starting leader election
         ballotNum[0] += 1
         ballotNum[1] = pid
-        curBallotNum = ballotNum
+        curBallotNum = copy.copy(ballotNum)
         elect_leader(curBallotNum)
         phase23(curBallotNum, value)
     elif curLeader == pid:
         ballotNum[0] += 1
         ballotNum[1] = pid
-        curBallotNum = ballotNum
+        curBallotNum = copy.copy(ballotNum)
         phase23(curBallotNum, value)
     else:
         send_message(other_processes[curLeader], f"value|{value}")
@@ -180,6 +190,8 @@ def process_transaction(sock, port, data ):
         acceptVal = ""
     elif message[0] == "value":
         threading.Thread(target=propose, args=(message[1],)).start()
+    elif message[0] == "exit":
+        exit()
 
         
 
