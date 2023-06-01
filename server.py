@@ -31,15 +31,15 @@ pid = None
 other_processes = {}
 block = None
 
-def post(username, title, content):
+def addBlock(additionalBlock):
   global block
-  block = blockchain.post(block, username,title,content)
-  print("Post Successful")
+  block = blockchain.construct(additionalBlock, block)
+
+def post(username, title, content):
+  return blockchain.post(block, username,title,content)
 
 def comment(username, title, content):
-  global block
-  block = blockchain.comment(block, username,title,content)
-  print("Comment Successful")
+  return blockchain.comment(block, username,title,content)
 
 def exit():
     sys.stdout.flush()
@@ -51,13 +51,16 @@ def exit():
     os._exit(0)
 
 def handle_input():
+
   while True:
     try:
         transaction = input().split("  ")
         if(transaction[0] == "post"):
-            threading.Thread(target=propose, args=("~".join(transaction),)).start()
+            tmp_block = post(transaction[1], transaction[2], transaction[3])
+            threading.Thread(target=propose, args=(tmp_block.toString(),)).start()
         elif(transaction[0] == "comment"):
-            threading.Thread(target=propose, args=("~".join(transaction),)).start()
+            tmp_block = comment(transaction[1], transaction[2], transaction[3])
+            threading.Thread(target=propose, args=(tmp_block.toString(),)).start()
         elif(transaction[0] == "view all"):
             print("[" + ",".join(blockchain.viewAll(block)) + "]")
         elif(transaction[0] == "view posts"):
@@ -98,13 +101,9 @@ def greater(b1, b2):
         return False
     return b1[0] > b2[0] or (b1[0] == b2[0] and b1[1] > b2[1])
 
-def execute(transaction):
+def execute(block):
     ballotNum[2] += 1
-    transaction = transaction.split("~")
-    if(transaction[0] == "post"):
-        post(transaction[1], transaction[2], transaction[3])
-    elif(transaction[0] == "comment"):
-        comment(transaction[1], transaction[2], transaction[3])
+    addBlock(block)
 
 def elect_leader(curBallotNum):
     global promises, curLeader

@@ -45,8 +45,21 @@ def debug(block):
   result.append("(" + block.H + f"|{block.T[0]}|{block.T[1]}|{block.T[2]}|{block.T[3]}|" + str(block.N) + ")")
   return result
 
+def construct(block_text, prev):
+  block = Block()
+  vals = block_text.split("~")
+  block.P = prev
+  block.H = vals[0]
+  block.N = vals[1]
+  block.T = (vals[2],vals[3],vals[4],vals[5])
+  return block
+
 class Block:
-  def __init__(self, operation, username, title, content, prev=None):
+  def __init__(self, operation=None, username=None, title=None, content=None, prev=None):
+    if operation is not None:
+      self.init(operation, username, title, content)
+
+  def init(self, operation, username, title, content, prev=None):
     self.P = prev
     self.H = prev.getHash() if prev is not None else "0"*64
     self.T = (operation, username, title, content)
@@ -62,5 +75,9 @@ class Block:
     while hashVal[0] != '0' and hashVal[0] != '1':
       self.N += 1
       hashVal = self.getHash()
+  
+  def toString(self):
+    return f"{self.H}~{self.N}~{self.T[0]}~{self.T[1]}~{self.T[2]}~{self.T[3]}"
+
   
     
