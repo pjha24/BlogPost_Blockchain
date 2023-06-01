@@ -22,6 +22,9 @@ isRunning = False
 promises = []
 accepts = 0
 
+
+waitingForLeader = False
+
 HOST = "127.0.0.1"
 pid = None
 
@@ -41,7 +44,10 @@ def comment(username, title, content):
 def exit():
     sys.stdout.flush()
     for _, conn in other_processes.items():
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
     os._exit(0)
 
 def handle_input():
@@ -63,7 +69,13 @@ def handle_input():
         elif(transaction[0] == "broadcast"):
             for _, conn in other_processes.items():                #iterating through all other process
                 send_message(conn, transaction[1])
-        elif(transaction[0] == "exit"):
+        elif(transaction[0] == "failLink"):
+            send_message(other_processes[int(transaction[1])], f"fail|{pid}")
+            other_processes[int(transaction[1])] = None
+        elif(transaction[0] == "fixLink"):
+            process_conn(int(transaction[1]))
+            send_message(other_processes[int(transaction[1])], f"fix|{pid}")
+        elif(transaction[0] == "crash"):
             exit()
         elif(transaction[0] == "exit all"):
             for _, conn in other_processes.items():
@@ -87,6 +99,7 @@ def greater(b1, b2):
     return b1[0] > b2[0] or (b1[0] == b2[0] and b1[1] > b2[1])
 
 def execute(transaction):
+    ballotNum[2] += 1
     transaction = transaction.split("~")
     if(transaction[0] == "post"):
         post(transaction[1], transaction[2], transaction[3])
@@ -126,34 +139,44 @@ def phase23(curBallotNum, value):
             send_message(sock, f"decide|{value}|{pid}")
 
 
+def full_leader_election(value):
+    ballotNum[0] += 1
+    ballotNum[1] = pid
+    curBallotNum = copy.copy(ballotNum)
+    elect_leader(curBallotNum)
+    phase23(curBallotNum, value)
+
+def multi_time(value):
+    isRunning = True
+    ballotNum[0] += 1
+    ballotNum[1] = pid
+    curBallotNum = copy.copy(ballotNum)
+    phase23(curBallotNum, value)
+
 def propose(value):
     global ballotNum, isRunning
     if curLeader is None:                                   #starting leader election
-        ballotNum[0] += 1
-        ballotNum[1] = pid
-        curBallotNum = copy.copy(ballotNum)
-        elect_leader(curBallotNum)
-        phase23(curBallotNum, value)
+        full_leader_election(value)
     elif curLeader == pid:
         if isRunning:
             leaderQueue.put(value)
         else:
-            isRunning = True
-            ballotNum[0] += 1
-            ballotNum[1] = pid
-            curBallotNum = copy.copy(ballotNum)
-            phase23(curBallotNum, value)
+            multi_time(value)
             while not leaderQueue.empty():
                 time.sleep(1)
                 value = leaderQueue.get()
-                ballotNum[0] += 1
-                ballotNum[1] = pid
-                curBallotNum = copy.copy(ballotNum)
-                phase23(curBallotNum, value)
+                multi_time(value)
             isRunning = False
 
     else:
         send_message(other_processes[curLeader], f"value|{value}")
+        waitingForLeader = True
+        count = 0
+        while waitingForLeader and count < 4:
+            count += 1
+            time.sleep(5)
+        if waitingForLeader:
+            full_leader_election(value)
 
         
 
@@ -165,17 +188,15 @@ def process_conn(port):
         try:
             s.connect((HOST, port))
             other_processes[port] = s
-            break
+            return s
         except:
             time.sleep(5)
-    # print(f"Connected by {addr}", flush=True)
-    print(f"connected to port {port}", flush=True)
     
 
 
 def process_transaction(sock, port, data ):
     time.sleep(3)
-    global acceptNum, acceptVal, ballotNum, accepts, curLeader
+    global acceptNum, acceptVal, ballotNum, accepts, curLeader, waitingForLeader
     print(f"received {data} from {port}")
     message = data.decode().split("|")
     if message[0] == "prepare":
@@ -200,12 +221,19 @@ def process_transaction(sock, port, data ):
         if b_num == ballotNum:
             accepts += 1
     elif message[0] == "decide":
+        waitingForLeader = False
         execute(message[1])
         curLeader = int(message[2])
         acceptNum = [0,0,0]
         acceptVal = ""
     elif message[0] == "value":
         threading.Thread(target=propose, args=(message[1],)).start()
+    elif message[0] == "reconnect":
+        process_conn(int(message[1]))
+    elif message[0] == "fail":
+        other_processes[int(message[1])] = None
+    elif message[0] == "fix":
+        process_conn(int(message[1]))
     elif message[0] == "exit":
         exit()
 
@@ -242,13 +270,13 @@ def send_message(sock, data):
     try:
         sock.sendall(bytes(data , "utf-8"))
     except:
-        print("Error sending message", flush=True)
-    return
+        return
 
 
 if __name__ == "__main__":
     threading.Thread(target=process_bind, args=(int(sys.argv[1]),)).start()
     for other_port in sys.argv[2:]:
-        process_conn(int(other_port))
+        s = process_conn(int(other_port))
+        send_message(s, f"reconnect|{int(sys.argv[1])}")
     handle_input()
 
