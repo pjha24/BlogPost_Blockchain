@@ -5,6 +5,7 @@ import time
 import sys
 import threading
 import copy
+import queue
 
 # Multi Paxos Definitions:
 
@@ -15,6 +16,8 @@ acceptNum = [0,0,0]
 acceptVal = ""
 
 curLeader = None
+leaderQueue = queue.Queue()
+isRunning = False
 
 promises = []
 accepts = 0
@@ -120,11 +123,11 @@ def phase23(curBallotNum, value):
     if curBallotNum == ballotNum:                       #phase 3
         execute(value)
         for _,sock in other_processes.items():
-            send_message(sock, f"decide|{value}")
+            send_message(sock, f"decide|{value}|{pid}")
 
 
 def propose(value):
-    global ballotNum
+    global ballotNum, isRunning
     if curLeader is None:                                   #starting leader election
         ballotNum[0] += 1
         ballotNum[1] = pid
@@ -132,10 +135,23 @@ def propose(value):
         elect_leader(curBallotNum)
         phase23(curBallotNum, value)
     elif curLeader == pid:
-        ballotNum[0] += 1
-        ballotNum[1] = pid
-        curBallotNum = copy.copy(ballotNum)
-        phase23(curBallotNum, value)
+        if isRunning:
+            leaderQueue.put(value)
+        else:
+            isRunning = True
+            ballotNum[0] += 1
+            ballotNum[1] = pid
+            curBallotNum = copy.copy(ballotNum)
+            phase23(curBallotNum, value)
+            while not leaderQueue.empty():
+                time.sleep(1)
+                value = leaderQueue.get()
+                ballotNum[0] += 1
+                ballotNum[1] = pid
+                curBallotNum = copy.copy(ballotNum)
+                phase23(curBallotNum, value)
+            isRunning = False
+
     else:
         send_message(other_processes[curLeader], f"value|{value}")
 
@@ -165,7 +181,6 @@ def process_transaction(sock, port, data ):
     if message[0] == "prepare":
         b_num = decode(message[1])
         if greater(b_num, ballotNum):
-            curLeader = b_num[1]
             ballotNum = b_num
             send_message(other_processes[b_num[1]], f"promise|{b_num}|{acceptNum}|{acceptVal}")
     elif message[0] == "promise":
@@ -186,6 +201,7 @@ def process_transaction(sock, port, data ):
             accepts += 1
     elif message[0] == "decide":
         execute(message[1])
+        curLeader = int(message[2])
         acceptNum = [0,0,0]
         acceptVal = ""
     elif message[0] == "value":
