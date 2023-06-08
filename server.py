@@ -32,8 +32,13 @@ other_processes = {}
 block = None
 
 def addBlock(additionalBlock):
-  global block
-  block = blockchain.construct(additionalBlock, block)
+    global block
+    block = blockchain.construct(additionalBlock, block)
+    if block.T[0] == "post":
+        print(f"NEW POST {block.T[2]} from {block.T[1]}")
+    if block.T[0] == "comment":
+        print(f"NEW COMMENT on {block.T[2]} from {block.T[1]}")
+
 
 def post(username, title, content):
   return blockchain.post(block, username,title,content)
@@ -108,10 +113,11 @@ def execute(block):
 def elect_leader(curBallotNum):
     global promises, curLeader
     promises = []
+    print(f"BROADCASTING PREPARE {curBallotNum}")
     for _,sock in other_processes.items():
         send_message(sock, f"prepare|{ballotNum}")
     while len(promises) < 3 and curBallotNum == ballotNum:
-        print("waiting for promises")
+        # print("waiting for promises")
         time.sleep(7)
     if curBallotNum == ballotNum:
         curLeader = pid
@@ -126,16 +132,18 @@ def phase23(curBallotNum, value):
                 highest_num = accept_num
                 proposed_value = accept_value
         accepts = 0
+        print(f"BROADCASTING ACCEPT {curBallotNum}")
         for _,sock in other_processes.items():
             send_message(sock, f"accept|{curBallotNum}|{proposed_value}")
     
     while accepts < 3 and curBallotNum == ballotNum:
-        print("waiting for accepts")
+        # print("waiting for accepts")
         time.sleep(7)
     if curBallotNum == ballotNum:                       #phase 3
         execute(value)
+        print(f"BROADCASTING DECIDE {curBallotNum}")
         for _,sock in other_processes.items():
-            send_message(sock, f"decide|{value}|{pid}")
+            send_message(sock, f"decide|{curBallotNum}|{value}|{pid}")
 
 
 def full_leader_election(value):
@@ -175,13 +183,14 @@ def propose(value):
             count += 1
             time.sleep(5)
         if waitingForLeader:
+            print("TIMEOUT")
             full_leader_election(value)
 
         
 
 #connecting to hopefully existing port
 def process_conn(port):
-    print(f"in process of connecting {port}")
+    # print(f"in process of connecting {port}")
     while True:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -196,33 +205,41 @@ def process_conn(port):
 def process_transaction(sock, port, data ):
     time.sleep(3)
     global acceptNum, acceptVal, ballotNum, accepts, curLeader, waitingForLeader
-    print(f"received {data} from {port}")
+    # print(f"received {data} from {port}")
     message = data.decode().split("|")
     if message[0] == "prepare":
         b_num = decode(message[1])
+        print(f"RECEIVED PREPARE {b_num}")
         if greater(b_num, ballotNum):
             ballotNum = b_num
+            print(f"PROMISE {b_num},{acceptNum},{acceptVal}")
             send_message(other_processes[b_num[1]], f"promise|{b_num}|{acceptNum}|{acceptVal}")
     elif message[0] == "promise":
         b_num = decode(message[1])
+        print(f"RECEIVED PROMISE {b_num}")
         if b_num == ballotNum:
             a_num = decode(message[2])
             promises.append((a_num, message[3]))
     elif message[0] == "accept":
         b_num = decode(message[1])
+        print(f"RECEIVED ACCEPT {b_num}")
         if greater(b_num, ballotNum) or b_num == ballotNum:
             ballotNum = b_num
             acceptNum = b_num
             acceptVal = message[2]
+            print(f"ACCEPTED {b_num}")
             send_message(other_processes[b_num[1]], f"accepted|{b_num}")
     elif message[0] == "accepted":
         b_num = decode(message[1])
+        print(f"RECEIVED ACCEPTED {b_num}")
         if b_num == ballotNum:
             accepts += 1
     elif message[0] == "decide":
+        b_num = decode(message[1])
+        print(f"RECEIVED DECIDE {b_num}")
         waitingForLeader = False
-        execute(message[1])
-        curLeader = int(message[2])
+        execute(message[2])
+        curLeader = int(message[3])
         acceptNum = [0,0,0]
         acceptVal = ""
     elif message[0] == "value":
@@ -249,19 +266,19 @@ def process_bind(self_port):
             try:
                 conn, addr = s.accept()
             except:
-                print("exception in accept", flush=True)
+                # print("exception in accept", flush=True)
                 break
             threading.Thread(target=listening, args=(conn,addr)).start()
 
 def listening(conn,addr):
-    print(f"connected to {addr}")
+    # print(f"connected to {addr}")
     while True:
         try:
             data = conn.recv(1024)
             if(len(data) == 0):
                 break
         except:
-            print(f"exception receiving data from {addr[1]}", flush=True)
+            # print(f"exception receiving data from {addr[1]}", flush=True)
             break
         threading.Thread(target=process_transaction, args=(conn, addr, data)).start()
 
