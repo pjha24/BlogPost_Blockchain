@@ -31,13 +31,28 @@ pid = None
 other_processes = {}
 block = None
 
-def addBlock(additionalBlock):
+def filename():
+    return f"{pid}.txt"
+
+def removeTentative():
+    if os.path.exists(filename()):
+        with open(filename(), "r") as f:
+            lines = f.readlines()
+            if len(lines) > 0 and lines[-1][-1] == "`":
+                with open(filename(), "w") as f:
+                    f.writelines(lines[:-1])
+
+def addBlock(additionalBlock, realAdd=True):
     global block
     block = blockchain.construct(additionalBlock, block)
-    if block.T[0] == "post":
-        print(f"NEW POST {block.T[2]} from {block.T[1]}")
-    if block.T[0] == "comment":
-        print(f"NEW COMMENT on {block.T[2]} from {block.T[1]}")
+    if realAdd:
+        removeTentative()
+        with open(filename(), 'a') as f:
+            f.write(additionalBlock + "\n")
+        if block.T[0] == "post":
+            print(f"NEW POST {block.T[2]} from {block.T[1]}")
+        if block.T[0] == "comment":
+            print(f"NEW COMMENT on {block.T[2]} from {block.T[1]}")
 
 
 def post(username, title, content):
@@ -88,6 +103,7 @@ def handle_input():
         elif(transaction[0] == "exit all"):
             for _, conn in other_processes.items():
                 send_message(conn, "exit")
+            os.remove(filename())
             exit()
         elif(transaction[0] == "leader"):
             print(curLeader)
@@ -116,7 +132,7 @@ def elect_leader(curBallotNum):
     print(f"BROADCASTING PREPARE {curBallotNum}")
     for _,sock in other_processes.items():
         send_message(sock, f"prepare|{ballotNum}")
-    while len(promises) < 3 and curBallotNum == ballotNum:
+    while len(promises) < 2 and curBallotNum == ballotNum:
         # print("waiting for promises")
         time.sleep(7)
     if curBallotNum == ballotNum:
@@ -126,24 +142,27 @@ def phase23(curBallotNum, value):
     global accepts
     if curBallotNum == ballotNum:
         proposed_value = value
-        highest_num = (0,0,0)
+        highest_num = (0,0,ballotNum[2])
         for accept_num, accept_value in promises:           #phase 2
             if greater(accept_num, highest_num):
                 highest_num = accept_num
                 proposed_value = accept_value
         accepts = 0
+        with open(filename(), 'a') as f:
+            f.write(f"{curBallotNum}|{proposed_value}`")
         print(f"BROADCASTING ACCEPT {curBallotNum}")
         for _,sock in other_processes.items():
             send_message(sock, f"accept|{curBallotNum}|{proposed_value}")
     
-    while accepts < 3 and curBallotNum == ballotNum:
-        # print("waiting for accepts")
-        time.sleep(7)
-    if curBallotNum == ballotNum:                       #phase 3
-        execute(value)
-        print(f"BROADCASTING DECIDE {curBallotNum}")
-        for _,sock in other_processes.items():
-            send_message(sock, f"decide|{curBallotNum}|{value}|{pid}")
+        while accepts < 2 and curBallotNum == ballotNum:
+            # print("waiting for accepts")
+            time.sleep(7)
+        if curBallotNum == ballotNum:                       #phase 3
+            removeTentative()
+            execute(proposed_value)
+            print(f"BROADCASTING DECIDE {curBallotNum}")
+            for _,sock in other_processes.items():
+                send_message(sock, f"decide|{curBallotNum}|{proposed_value}|{pid}")
 
 
 def full_leader_election(value):
@@ -161,7 +180,7 @@ def multi_time(value):
     phase23(curBallotNum, value)
 
 def propose(value):
-    global ballotNum, isRunning
+    global ballotNum, isRunning,waitingForLeader
     if curLeader is None:                                   #starting leader election
         full_leader_election(value)
     elif curLeader == pid:
@@ -226,6 +245,9 @@ def process_transaction(sock, port, data ):
         if greater(b_num, ballotNum) or b_num == ballotNum:
             ballotNum = b_num
             acceptNum = b_num
+            removeTentative()
+            with open(filename(), 'a') as f:
+                f.write(f"{acceptNum}|{message[2]}`")
             acceptVal = message[2]
             print(f"ACCEPTED {b_num}")
             send_message(other_processes[b_num[1]], f"accepted|{b_num}")
@@ -251,6 +273,7 @@ def process_transaction(sock, port, data ):
     elif message[0] == "fix":
         process_conn(int(message[1]))
     elif message[0] == "exit":
+        os.remove(filename())
         exit()
 
         
@@ -291,6 +314,20 @@ def send_message(sock, data):
 
 if __name__ == "__main__":
     threading.Thread(target=process_bind, args=(int(sys.argv[1]),)).start()
+    if os.path.exists(filename()):
+        print("LOADING FROM FILE")
+        with open(filename(), "r+") as f:
+            lines = f.readlines()
+            for line in lines:
+                if line[-1] != "`":
+                    addBlock(line, False)
+                else:
+                    vals = line.split("|")
+                    acceptNum = [int(i) for i in vals[0][1:-1].split(",")]
+                    acceptVal = vals[1][:-1]
+    removeTentative()
+
+                
     for other_port in sys.argv[2:]:
         s = process_conn(int(other_port))
         send_message(s, f"reconnect|{int(sys.argv[1])}")
