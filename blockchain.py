@@ -8,6 +8,13 @@ def post(block, username, title, content):
 def comment(block, username, title, content):
   return Block(COMMENT, username, title, content, prev=block)
 
+
+def inBlockchain(block, title):
+  while block is not None:
+    if block.T[2] == title:
+      return True
+  return False
+
 def viewAll(block):
   if block is None:
     return []
@@ -16,6 +23,13 @@ def viewAll(block):
     result.append(f"(Title: {block.T[2]}, Author: {block.T[1]})")
   return result
 
+def blog(block):
+  if block is None:
+    return []
+  result = blog(block.P)
+  if block.T[0] == POST:
+    result.append(f"{block.T[2]}")
+  return result
 
 def viewUser(block, username):
   if block is None:
@@ -25,6 +39,14 @@ def viewUser(block, username):
     result.append(f"(Title: {block.T[2]}, Content: {block.T[3]})")
   return result
 
+def read(block, title, comments = []):
+  if block is None:
+    return "POST NOT FOUND"
+  if block.T[0] == COMMENT and block.T[2] == title:
+    comments.append(f"(Author:{block.T[1]}, Comment: {block.T[3]})")
+  if block.T[0] == POST and block.T[2] == title:
+    return f"Title:{block.T[2]}, Content:{block.T[3]}\nComments:\n" + "\n".join(comments)
+  return read(block.P, title, comments)
 
 def viewComments(block, post):
   content = ""

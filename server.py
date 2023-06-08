@@ -73,9 +73,12 @@ def exit():
 def handle_input():
 
   while True:
-    try:
+    # try:
         transaction = input().split("  ")
         if(transaction[0] == "post"):
+            if blockchain.inBlockchain(block, transaction[2]):
+                print("DUPLICATE TITLE")
+                continue
             tmp_block = post(transaction[1], transaction[2], transaction[3])
             threading.Thread(target=propose, args=(tmp_block.toString(),)).start()
         elif(transaction[0] == "comment"):
@@ -83,10 +86,22 @@ def handle_input():
             threading.Thread(target=propose, args=(tmp_block.toString(),)).start()
         elif(transaction[0] == "view all"):
             print("[" + ",".join(blockchain.viewAll(block)) + "]")
-        elif(transaction[0] == "view posts"):
-            print("[" + ",".join(blockchain.viewUser(block, transaction[1])) + "]")
+        elif(transaction[0] == "view"):
+            posts = blockchain.viewUser(block, transaction[1])
+            if(len(posts) > 0):
+                print("[" + ",".join(posts) + "]")
+            else:
+                print("NO POST")
         elif(transaction[0] == "view comments"):
             print("[" + ",".join(blockchain.viewComments(block, transaction[1])) + "]")
+        elif(transaction[0] == "blog"):
+            blog = blockchain.blog(block)
+            if len(blog) > 0:
+                print("[" + ",".join(blog) + "]")
+            else:
+                print("BLOG EMPTY")
+        elif(transaction[0] == "read"):
+            print(blockchain.read(block, transaction[1]))
         elif(transaction[0] == "debug"):
             print("[" + ",".join(blockchain.debug(block)) + "]")
         elif(transaction[0] == "broadcast"):
@@ -103,14 +118,15 @@ def handle_input():
         elif(transaction[0] == "exit all"):
             for _, conn in other_processes.items():
                 send_message(conn, "exit")
-            os.remove(filename())
+            if os.path.exists(filename()):
+                os.remove(filename())
             exit()
         elif(transaction[0] == "leader"):
             print(curLeader)
         else:
             print("Invalid command")
-    except:
-      print("Invalid command")
+    # except:
+    #   print("Invalid command")
 
 def decode(tuple_val):
     return [int(i) for i in tuple_val[1:-1].split(",")]
@@ -217,7 +233,7 @@ def process_conn(port):
             other_processes[port] = s
             return s
         except:
-            time.sleep(5)
+            return None
     
 
 
