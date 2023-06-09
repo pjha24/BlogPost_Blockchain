@@ -13,6 +13,7 @@ def inBlockchain(block, title):
   while block is not None:
     if block.T[2] == title:
       return True
+    block = block.P
   return False
 
 def viewAll(block):

@@ -56,7 +56,7 @@ def addBlock(additionalBlock, realAdd=True):
 
 
 def post(username, title, content):
-  return blockchain.post(block, username,title,content)
+    return blockchain.post(block, username,title,content)
 
 def comment(username, title, content):
   return blockchain.comment(block, username,title,content)
@@ -73,7 +73,7 @@ def exit():
 def handle_input():
 
   while True:
-    # try:
+    try:
         transaction = input().split("  ")
         if(transaction[0] == "post"):
             if blockchain.inBlockchain(block, transaction[2]):
@@ -125,8 +125,8 @@ def handle_input():
             print(curLeader)
         else:
             print("Invalid command")
-    # except:
-    #   print("Invalid command")
+    except:
+      print("Invalid command")
 
 def decode(tuple_val):
     return [int(i) for i in tuple_val[1:-1].split(",")]
@@ -198,11 +198,14 @@ def multi_time(value):
 def propose(value):
     global ballotNum, isRunning,waitingForLeader
     if curLeader is None:                                   #starting leader election
+        print("curleader is None")
         full_leader_election(value)
     elif curLeader == pid:
+        print("curleader is me")
         if isRunning:
             leaderQueue.put(value)
         else:
+            print(f"curleader is {curLeader}")
             multi_time(value)
             while not leaderQueue.empty():
                 time.sleep(1)
