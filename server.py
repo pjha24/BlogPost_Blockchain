@@ -40,15 +40,33 @@ def removeTentative():
             lines = f.readlines()
             if len(lines) > 0 and lines[-1][-1] == "`":
                 with open(filename(), "w") as f:
-                    f.writelines(lines[:-1])
+                    content = "".join(lines[:-1])
+                    if len(content) > 0:
+                        f.write(content[:-1])
+
+def maybeAddNewline():
+    if os.path.exists(filename()):
+        hasContent = False
+        with open(filename(), "r") as f:
+            if (len("".join(f.readlines())) > 0):
+                hasContent = True
+        with open(filename(), 'a') as f:
+            if hasContent:
+                f.write("\n")
+
+def addTentative(b_num, val):
+    with open(filename(), 'a') as f:
+        maybeAddNewline()
+        f.write(f"{b_num}|{val}`")
 
 def addBlock(additionalBlock, realAdd=True):
     global block
     block = blockchain.construct(additionalBlock, block)
     if realAdd:
         removeTentative()
+        maybeAddNewline()
         with open(filename(), 'a') as f:
-            f.write(additionalBlock + "\n")
+            f.write(additionalBlock)
         if block.T[0] == "post":
             print(f"NEW POST {block.T[2]} from {block.T[1]}")
         if block.T[0] == "comment":
@@ -131,14 +149,30 @@ def handle_input():
 def decode(tuple_val):
     return [int(i) for i in tuple_val[1:-1].split(",")]
 
-def greater(b1, b2):
+def send_help(other_process, diff):
+    removeTentative()
+    if(curLeader == pid):
+        with open(filename(), "r") as f:
+            print(f"SENDING HELP TO {other_process}")
+            send_message(other_processes[other_process], "help|" +"|".join([t.strip() for t in f.readlines()[-diff:]]))
+    else:
+        print("DEFER TO LEADER TO SEND AID")
+
+def greater(b1, b2, other_process=None, help=True):
     if(b1[2] > b2[2]):
+        if help:
+            print(f"SENDING SOS to {other_process}")
+            send_message(other_processes[other_process], f"sos|{pid}|{blockchain.depth(block)}")
+            return False
         return True
     if(b1[2] < b2[2]):
+        if help:
+            send_help(other_process, b2[2] - b1[2])
         return False
     return b1[0] > b2[0] or (b1[0] == b2[0] and b1[1] > b2[1])
 
 def execute(block):
+    ballotNum[2] += 1
     addBlock(block)
 
 def elect_leader(curBallotNum):
@@ -159,12 +193,11 @@ def phase23(curBallotNum, value):
         proposed_value = value
         highest_num = (0,0,ballotNum[2])
         for accept_num, accept_value in promises:           #phase 2
-            if greater(accept_num, highest_num):
+            if greater(accept_num, highest_num, help=False):
                 highest_num = accept_num
                 proposed_value = accept_value
         accepts = 0
-        with open(filename(), 'a') as f:
-            f.write(f"{curBallotNum}|{proposed_value}`")
+        addTentative(curBallotNum, proposed_value)
         print(f"BROADCASTING ACCEPT {curBallotNum}")
         for _,sock in other_processes.items():
             send_message(sock, f"accept|{curBallotNum}|{proposed_value}")
@@ -183,7 +216,7 @@ def phase23(curBallotNum, value):
 def getNewBallotNumber():
     ballotNum[0] += 1
     ballotNum[1] = pid
-    ballotNum[2] = blockchain.depth(block) + 1
+    ballotNum[2] = blockchain.depth(block)
 
 def full_leader_election(value):
     getNewBallotNumber()
@@ -248,7 +281,7 @@ def process_transaction(sock, port, data ):
     if message[0] == "prepare":
         b_num = decode(message[1])
         print(f"RECEIVED PREPARE {b_num}")
-        if greater(b_num, ballotNum):
+        if greater(b_num, ballotNum, b_num[1]):
             ballotNum = b_num
             print(f"PROMISE {b_num},{acceptNum},{acceptVal}")
             send_message(other_processes[b_num[1]], f"promise|{b_num}|{acceptNum}|{acceptVal}")
@@ -261,12 +294,11 @@ def process_transaction(sock, port, data ):
     elif message[0] == "accept":
         b_num = decode(message[1])
         print(f"RECEIVED ACCEPT {b_num}")
-        if greater(b_num, ballotNum) or b_num == ballotNum:
+        if greater(b_num, ballotNum, b_num[1]) or b_num == ballotNum:
             ballotNum = b_num
             acceptNum = b_num
             removeTentative()
-            with open(filename(), 'a') as f:
-                f.write(f"{acceptNum}|{message[2]}`")
+            addTentative(b_num, message[2])
             acceptVal = message[2]
             print(f"ACCEPTED {b_num}")
             send_message(other_processes[b_num[1]], f"accepted|{b_num}")
@@ -279,10 +311,18 @@ def process_transaction(sock, port, data ):
         b_num = decode(message[1])
         print(f"RECEIVED DECIDE {b_num}")
         waitingForLeader = False
-        execute(message[2])
         curLeader = int(message[3])
         acceptNum = [0,0,0]
         acceptVal = ""
+        if greater(b_num, ballotNum, b_num[1]) or b_num == ballotNum:
+            execute(message[2])
+    elif message[0] == "sos":
+        print("RECEIVED SOS")
+        send_help(int(message[1]), blockchain.depth(block) - int(message2))
+    elif message[0] == "help":
+        print("RECEIVED HELP")
+        for transaction in message[1:]:
+            execute(transaction)
     elif message[0] == "value":
         threading.Thread(target=propose, args=(message[1],)).start()
     elif message[0] == "reconnect":
@@ -292,7 +332,8 @@ def process_transaction(sock, port, data ):
     elif message[0] == "fix":
         process_conn(int(message[1]))
     elif message[0] == "exit":
-        os.remove(filename())
+        if os.path.exists(filename()):
+            os.remove(filename())
         exit()
 
         
