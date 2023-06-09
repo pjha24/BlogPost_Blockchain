@@ -2,6 +2,12 @@ import hashlib
 POST = "post"
 COMMENT = "comment"
 
+def depth(block):
+  count = 0
+  while block is not None:
+    count += 1
+    block = block.P
+  return count
 def post(block, username, title, content):
   return Block(POST, username, title, content, prev=block)
 
@@ -40,11 +46,11 @@ def viewUser(block, username):
     result.append(f"(Title: {block.T[2]}, Content: {block.T[3]})")
   return result
 
-def read(block, title, comments = []):
+def read(block, title, comments):
   if block is None:
     return "POST NOT FOUND"
   if block.T[0] == COMMENT and block.T[2] == title:
-    comments.append(f"(Author:{block.T[1]}, Comment: {block.T[3]})")
+    comments = [f"(Author:{block.T[1]}, Comment: {block.T[3]})"] + comments
   if block.T[0] == POST and block.T[2] == title:
     return f"Title:{block.T[2]}, Content:{block.T[3]}\nComments:\n" + "\n".join(comments)
   return read(block.P, title, comments)

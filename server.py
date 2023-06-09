@@ -101,7 +101,7 @@ def handle_input():
             else:
                 print("BLOG EMPTY")
         elif(transaction[0] == "read"):
-            print(blockchain.read(block, transaction[1]))
+            print(blockchain.read(block, transaction[1], []))
         elif(transaction[0] == "debug"):
             print("[" + ",".join(blockchain.debug(block)) + "]")
         elif(transaction[0] == "broadcast"):
@@ -139,7 +139,6 @@ def greater(b1, b2):
     return b1[0] > b2[0] or (b1[0] == b2[0] and b1[1] > b2[1])
 
 def execute(block):
-    ballotNum[2] += 1
     addBlock(block)
 
 def elect_leader(curBallotNum):
@@ -181,31 +180,32 @@ def phase23(curBallotNum, value):
                 send_message(sock, f"decide|{curBallotNum}|{proposed_value}|{pid}")
 
 
-def full_leader_election(value):
+def getNewBallotNumber():
     ballotNum[0] += 1
     ballotNum[1] = pid
+    ballotNum[2] = blockchain.depth(block) + 1
+
+def full_leader_election(value):
+    getNewBallotNumber()
     curBallotNum = copy.copy(ballotNum)
     elect_leader(curBallotNum)
     phase23(curBallotNum, value)
 
 def multi_time(value):
+    global isRunning
     isRunning = True
-    ballotNum[0] += 1
-    ballotNum[1] = pid
+    getNewBallotNumber()
     curBallotNum = copy.copy(ballotNum)
     phase23(curBallotNum, value)
 
 def propose(value):
     global ballotNum, isRunning,waitingForLeader
     if curLeader is None:                                   #starting leader election
-        print("curleader is None")
         full_leader_election(value)
     elif curLeader == pid:
-        print("curleader is me")
         if isRunning:
             leaderQueue.put(value)
         else:
-            print(f"curleader is {curLeader}")
             multi_time(value)
             while not leaderQueue.empty():
                 time.sleep(1)
