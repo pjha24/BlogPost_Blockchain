@@ -86,7 +86,7 @@ def construct(block_text, prev):
 class Block:
   def __init__(self, operation=None, username=None, title=None, content=None, prev=None):
     if operation is not None:
-      self.init(operation, username, title, content)
+      self.init(operation, username, title, content, prev)
 
   def init(self, operation, username, title, content, prev=None):
     self.P = prev
