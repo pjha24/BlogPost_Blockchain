@@ -63,6 +63,7 @@ def addTentative(b_num, val):
 def addBlock(additionalBlock, realAdd=True):
     global block
     block = blockchain.construct(additionalBlock, block)
+    ballotNum[2] += 1
     if realAdd:
         removeTentative()
         maybeAddNewline()
@@ -156,7 +157,8 @@ def send_help(other_process, diff):
     with open(filename(), "r") as f:
         print(f"SENDING HELP TO {other_process}")
         depth = blockchain.depth(block)
-        send_message(other_processes[other_process], "help|" +"|".join([f"{depth - diff + i + 1}~" + t.strip() for i, t in enumerate(f.readlines()[-diff:])]))
+        msg = "help|" +"|".join([f"{depth - diff + i + 1}~" + t.strip() for i, t in enumerate(f.readlines()[-diff:])])
+        send_message(other_processes[other_process], msg)
     # else:
     #     print("DEFER TO LEADER TO SEND AID")
 
@@ -174,7 +176,6 @@ def greater(b1, b2, other_process=None, help=True):
     return b1[0] > b2[0] or (b1[0] == b2[0] and b1[1] > b2[1])
 
 def execute(block):
-    ballotNum[2] += 1
     addBlock(block)
 
 def elect_leader(curBallotNum):
