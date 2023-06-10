@@ -22,6 +22,7 @@ isRunning = False
 promises = []
 accepts = 0
 
+help_lock = threading.Lock()
 
 waitingForLeader = False
 
@@ -151,12 +152,13 @@ def decode(tuple_val):
 
 def send_help(other_process, diff):
     removeTentative()
-    if(curLeader == pid):
-        with open(filename(), "r") as f:
-            print(f"SENDING HELP TO {other_process}")
-            send_message(other_processes[other_process], "help|" +"|".join([t.strip() for t in f.readlines()[-diff:]]))
-    else:
-        print("DEFER TO LEADER TO SEND AID")
+    # if(curLeader == pid):
+    with open(filename(), "r") as f:
+        print(f"SENDING HELP TO {other_process}")
+        depth = blockchain.depth(block)
+        send_message(other_processes[other_process], "help|" +"|".join([f"{depth - diff + i + 1}~" + t.strip() for i, t in enumerate(f.readlines()[-diff:])]))
+    # else:
+    #     print("DEFER TO LEADER TO SEND AID")
 
 def greater(b1, b2, other_process=None, help=True):
     if(b1[2] > b2[2]):
@@ -318,11 +320,14 @@ def process_transaction(sock, port, data ):
             execute(message[2])
     elif message[0] == "sos":
         print("RECEIVED SOS")
-        send_help(int(message[1]), blockchain.depth(block) - int(message2))
+        send_help(int(message[1]), blockchain.depth(block) - int(message[2]))
     elif message[0] == "help":
-        print("RECEIVED HELP")
-        for transaction in message[1:]:
-            execute(transaction)
+        with help_lock:
+            for transaction in message[1:]:
+                transaction_parts = transaction.split("~")
+                if int(transaction_parts[0]) > blockchain.depth(block):
+                    print(f"RECEIVED HELP FOR DEPTH {transaction_parts[0]}")
+                    execute("~".join(transaction_parts[1:]))
     elif message[0] == "value":
         threading.Thread(target=propose, args=(message[1],)).start()
     elif message[0] == "reconnect":
